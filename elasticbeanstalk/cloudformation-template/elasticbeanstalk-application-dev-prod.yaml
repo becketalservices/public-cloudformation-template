@@ -1,0 +1,229 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Parameters:
+    ProjectName:
+      Type: String
+      Description: "The project name"
+    ECRDevName:
+      Type: String
+      Description: "Specify the Dev ECR Name"
+    ECRProdName:
+      Type: String
+      Description: "Specify the Prod ECR Name"
+    S3BucketName:
+      Type: String
+      Description: "Bucket Name for configuration for ElasticBeanStalk application"
+    EBDevAppS3KeyName:
+      Type: String
+      Description: "Key name for dev environment for e.g dev if you have created dev.zip"
+    EBProdAppS3KeyName:
+      Type: String
+      Description: "Key name for prod environment for e.g prod if you have created prod.zip"
+    VPC:
+      Type: String
+      Description: "Select the right VPC"
+    VPCPrivateSub1:
+      Type: String
+      Description: "Select the 1st private subnet"
+    VPCPrivateSub2:
+      Type: String
+      Description: "Select the 2nd private subnet"
+    VPCPublicSub1:
+      Type: String
+      Description: "Select the 1st public subnet"
+    VPCPublicSub2:
+      Type: String
+      Description: "Select the 1st public subnet"
+    EBDevCname:
+      Type: String
+      Description: "CNAME for Dev Elastic Beanstalk environment"
+    EBProdCname:
+      Type: String
+      Description: "CNAME for Prod Elastic Beanstalk environment"
+    EBDevACMArn:
+      Type: String
+      Description: "ACM Arn for Dev Elastic Beanstalk environment"
+    EBProdACMArn:
+      Type: String
+      Description: "ACM Arn for Prod Elastic Beanstalk environment"
+    EBKeyPair:
+      Type: String
+      Description: "Specify the right key pair required for SSH access"
+    EBInstanceType:
+      Type: String
+      Description: "Specify instance type"
+    InstanceProfile:
+      Type: String
+      Description: "instance profile for the ec2"
+    BastionHostSecurityGroup:
+      Type: String
+      Description: "Select Security Group of Bastion Host/Jump Host for SSH access"
+
+Resources:
+    EBApp:
+     Type: AWS::ElasticBeanstalk::Application
+     Properties: 
+        ApplicationName: !Ref ProjectName
+        Description: !Ref ProjectName
+        
+    EBDevAppVersion:
+     Type: AWS::ElasticBeanstalk::ApplicationVersion
+     Properties: 
+        ApplicationName: !Ref EBApp
+        SourceBundle:
+            S3Bucket: !Ref S3BucketName
+            S3Key: !Join [ '.', [!Ref EBDevAppS3KeyName, 'zip'] ]
+    EBProdAppVersion:
+     Type: AWS::ElasticBeanstalk::ApplicationVersion
+     Properties: 
+        ApplicationName: !Ref EBApp
+        SourceBundle:
+            S3Bucket: !Ref S3BucketName
+            S3Key: !Join [ '.', [!Ref EBProdAppS3KeyName, 'zip'] ]
+
+    EBEnvDev:
+     Type: AWS::ElasticBeanstalk::Environment
+     Properties: 
+        ApplicationName: !Ref EBApp
+        Description: "AWS Elastic Beanstalk Environment running Docker Sample Application"
+        EnvironmentName: !Join [ '-', [!Ref EBApp, !Ref ECRDevName] ]
+        CNAMEPrefix: !Ref EBDevCname
+        SolutionStackName: "64bit Amazon Linux 2018.03 v2.14.3 running Docker 18.09.9-ce"
+        VersionLabel: !Ref EBDevAppVersion
+        OptionSettings: 
+         - Namespace: "aws:autoscaling:launchconfiguration"
+           OptionName: EC2KeyName
+           Value: !Ref EBKeyPair
+         - Namespace: 'aws:autoscaling:launchconfiguration'
+           OptionName: IamInstanceProfile
+           Value: !Ref InstanceProfile
+         - Namespace: "aws:autoscaling:launchconfiguration"
+           OptionName: InstanceType
+           Value: !Ref EBInstanceType
+         - Namespace: "aws:autoscaling:launchconfiguration"
+           OptionName: SSHSourceRestriction
+           Value: !Join [ ', ', ['tcp','22','22', !Ref BastionHostSecurityGroup] ]
+         - Namespace: "aws:ec2:vpc"
+           OptionName: VPCId
+           Value: !Ref VPC
+         - Namespace: "aws:ec2:vpc"
+           OptionName: Subnets
+           Value: !Join [ ',', [!Ref VPCPrivateSub1, !Ref VPCPrivateSub2] ]
+         - Namespace: "aws:ec2:vpc"
+           OptionName: ELBScheme
+           Value: public
+         - Namespace: "aws:ec2:vpc"
+           OptionName: ELBSubnets
+           Value: !Join [ ',', [!Ref VPCPublicSub1, !Ref VPCPublicSub2] ]
+         - Namespace: "aws:ec2:vpc" 
+           OptionName: AssociatePublicIpAddress
+           Value: false
+         - Namespace: "aws:elasticbeanstalk:cloudwatch:logs"
+           OptionName: StreamLogs
+           Value: true
+         - Namespace: "aws:elasticbeanstalk:environment"
+           OptionName: EnvironmentType
+           Value: LoadBalanced
+         - Namespace: "aws:elasticbeanstalk:environment"
+           OptionName: LoadBalancerType
+           Value: application
+         - Namespace : "aws:elasticbeanstalk:environment:process:default"
+           OptionName : HealthCheckPath
+           Value : "/actuator/health"
+         - Namespace: "aws:elbv2:listener:default"
+           OptionName: Protocol
+           Value : "HTTP"
+         - Namespace: "aws:elbv2:listener:default"
+           OptionName: ListenerEnabled
+           Value : "false"
+         - Namespace : "aws:elbv2:listener:443"
+           OptionName: ListenerEnabled
+           Value : "true"
+         - Namespace : "aws:elbv2:listener:443"
+           OptionName: Protocol
+           Value : "HTTPS"
+         - Namespace : "aws:elbv2:listener:443"
+           OptionName: SSLCertificateArns
+           Value : !Ref EBDevACMArn
+         - Namespace : "aws:elbv2:listener:443"
+           OptionName: SSLPolicy
+           Value : "ELBSecurityPolicy-2016-08" 
+
+    EBEnvProd:
+      Type: AWS::ElasticBeanstalk::Environment
+      Properties: 
+        ApplicationName: !Ref EBApp
+        Description: "AWS Elastic Beanstalk Environment running Docker Sample Application"
+        EnvironmentName: !Join [ '-', [!Ref EBApp, !Ref ECRProdName] ]
+        CNAMEPrefix: !Ref EBProdCname
+        SolutionStackName: "64bit Amazon Linux 2018.03 v2.14.3 running Docker 18.09.9-ce"
+        VersionLabel: !Ref EBProdAppVersion
+        OptionSettings: 
+         - Namespace: "aws:autoscaling:launchconfiguration"
+           OptionName: EC2KeyName
+           Value: !Ref EBKeyPair
+         - Namespace: 'aws:autoscaling:launchconfiguration'
+           OptionName: IamInstanceProfile
+           Value: !Ref InstanceProfile
+         - Namespace: "aws:autoscaling:launchconfiguration"
+           OptionName: InstanceType
+           Value: !Ref EBInstanceType
+         - Namespace: "aws:autoscaling:launchconfiguration"
+           OptionName: SSHSourceRestriction
+           Value: !Join [ ', ', ['tcp','22','22', !Ref BastionHostSecurityGroup] ]
+         - Namespace: "aws:ec2:vpc"
+           OptionName: VPCId
+           Value: !Ref VPC
+         - Namespace: "aws:ec2:vpc"
+           OptionName: Subnets
+           Value: !Join [ ',', [!Ref VPCPrivateSub1, !Ref VPCPrivateSub2] ]
+         - Namespace: "aws:ec2:vpc"
+           OptionName: ELBScheme
+           Value: public
+         - Namespace: "aws:ec2:vpc"
+           OptionName: ELBSubnets
+           Value: !Join [ ',', [!Ref VPCPublicSub1, !Ref VPCPublicSub2] ]
+         - Namespace: "aws:ec2:vpc" 
+           OptionName: AssociatePublicIpAddress
+           Value: false
+         - Namespace: "aws:elasticbeanstalk:cloudwatch:logs"
+           OptionName: StreamLogs
+           Value: true
+         - Namespace: "aws:elasticbeanstalk:environment"
+           OptionName: EnvironmentType
+           Value: LoadBalanced
+         - Namespace: "aws:elasticbeanstalk:environment"
+           OptionName: LoadBalancerType
+           Value: application
+         - Namespace : "aws:elasticbeanstalk:environment:process:default"
+           OptionName : HealthCheckPath
+           Value : "/actuator/health"
+         - Namespace: "aws:elbv2:listener:default"
+           OptionName: Protocol
+           Value : "HTTP"
+         - Namespace: "aws:elbv2:listener:default"
+           OptionName: ListenerEnabled
+           Value : "false"
+         - Namespace : "aws:elbv2:listener:443"
+           OptionName: ListenerEnabled
+           Value : "true"
+         - Namespace : "aws:elbv2:listener:443"
+           OptionName: Protocol
+           Value : "HTTPS"
+         - Namespace : "aws:elbv2:listener:443"
+           OptionName: SSLCertificateArns
+           Value : !Ref EBProdACMArn
+         - Namespace : "aws:elbv2:listener:443"
+           OptionName: SSLPolicy
+           Value : "ELBSecurityPolicy-2016-08" 
+         - Namespace : "aws:elasticbeanstalk:command"
+           OptionName: "DeploymentPolicy"
+           Value     : "RollingWithAdditionalBatch"
+         - Namespace : "aws:elasticbeanstalk:command"
+           OptionName: "BatchSizeType"
+           Value     : "Fixed"
+         - Namespace : "aws:elasticbeanstalk:command"
+           OptionName: "BatchSize"
+           Value     : "1"
+         - Namespace : "aws:autoscaling:updatepolicy:rollingupdate"
+           OptionName: "RollingUpdateType"
+           Value     : "Immutable"

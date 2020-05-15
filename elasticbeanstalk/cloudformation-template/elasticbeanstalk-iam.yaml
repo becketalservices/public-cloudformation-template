@@ -1,0 +1,95 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Parameters:
+    ProjectName:
+      Type: String
+      Description: "The project name"
+    ECRDeployPolicy:
+      Type: String
+      Description: "ECR Deploy Policy Name"
+    ECRDevNameArn:
+      Type: String
+      Description: "ECR Dev Name ARN"
+    ECRProdNameArn:
+      Type: String
+      Description: "ECR Prod Name ARN"
+    DeployUser:
+      Type: String
+      Description: "Username for access to ECR"
+  
+Resources:
+    IAMDeployPolicy:
+        Type: 'AWS::IAM::ManagedPolicy'
+        Properties:
+          ManagedPolicyName: !Join [ '-', [!Ref ProjectName, !Ref ECRDeployPolicy] ]
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              -
+                Sid: AllowListImages
+                Effect: Allow
+                Action:
+                  - 'ecr:ListImages'
+                Resource: 
+                  - !Ref ECRDevNameArn
+                  - !Ref ECRProdNameArn
+              -
+                Sid: GetAuthorizationToken
+                Effect: Allow
+                Action:
+                  - ecr:GetAuthorizationToken
+                Resource: "*"
+              -
+                Sid: ManageRepositoryContents
+                Effect: Allow
+                Action:
+                  - ecr:GetAuthorizationToken
+                  - ecr:BatchCheckLayerAvailability
+                  - ecr:GetDownloadUrlForLayer
+                  - ecr:GetRepositoryPolicy
+                  - ecr:DescribeRepositories
+                  - ecr:ListImages
+                  - ecr:DescribeImages
+                  - ecr:BatchGetImage
+                  - ecr:InitiateLayerUpload
+                  - ecr:UploadLayerPart
+                  - ecr:CompleteLayerUpload
+                  - ecr:PutImage
+                Resource: 
+                  - !Ref ECRDevNameArn
+                  - !Ref ECRProdNameArn
+    InstanceProfileRole:
+      Type: AWS::IAM::Role
+      Properties:
+        AssumeRolePolicyDocument:
+          Version: "2012-10-17"
+          Statement: 
+            - 
+              Effect: "Allow"
+              Principal: 
+                Service: 
+                  - "ec2.amazonaws.com"
+              Action: 
+                - "sts:AssumeRole"
+        ManagedPolicyArns:
+          - "arn:aws:iam::aws:policy/AWSElasticBeanstalkWorkerTier"
+          - "arn:aws:iam::aws:policy/AWSElasticBeanstalkWebTier"
+          - "arn:aws:iam::aws:policy/AWSElasticBeanstalkMulticontainerDocker"
+          - !Ref IAMDeployPolicy
+        RoleName: !Join [ '-', [!Ref ProjectName,"svcrole",  !Ref DeployUser] ]
+    InstanceProfile:
+      Type: "AWS::IAM::InstanceProfile"
+      Properties:
+        Roles:
+          - !Ref 'InstanceProfileRole'
+        InstanceProfileName: !Join [ '-', [!Ref ProjectName, "ec2instprof", !Ref DeployUser] ]
+    ECRDeployUser:
+      Type: AWS::IAM::User
+      Properties:
+        UserName: !Join [ '-', [!Ref ProjectName, !Ref DeployUser] ]
+        ManagedPolicyArns: 
+        - !Ref IAMDeployPolicy
+Outputs:
+  InstanceProfile : 
+    Description: "Instance Profile for EC2"
+    Value: !Ref InstanceProfile
+

@@ -1,0 +1,117 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Parameters:
+    ProjectName:
+      Type: String
+      Description: "The project name"
+    ECRDevName:
+      Type: String
+      Description: "Specify the Dev ECR Name"
+    ECRProdName:
+      Type: String
+      Description: "Specify the Prod ECR Name"
+    ECRDeployPolicy: 
+      Type: String
+      Description: "ECR Deploy Policy Name"
+    DeployUser:
+      Type: String
+      Description: "Username for access to ECR"
+    S3BucketName:
+      Type: String
+      Description: "Bucket Name for configuration for ElasticBeanStalk application"
+    EBDevAppS3KeyName:
+      Type: String
+      Description: "Key name for dev environment for e.g dev if you have created dev.zip"
+    EBProdAppS3KeyName:
+      Type: String
+      Description: "Key name for prod environment for e.g prod if you have created prod.zip"
+    VPC:
+      Type: AWS::EC2::VPC::Id
+      Description: "Select the right VPC"
+    VPCPrivateSub1:
+      Type: AWS::EC2::Subnet::Id
+      Description: "Select the 1st private subnet"
+    VPCPrivateSub2:
+      Type: AWS::EC2::Subnet::Id
+      Description: "Select the 2nd private subnet"
+    VPCPublicSub1:
+      Type: AWS::EC2::Subnet::Id
+      Description: "Select the 1st public subnet"
+    VPCPublicSub2:
+      Type: AWS::EC2::Subnet::Id
+      Description: "Select the 2nd public subnet"
+    EBDevCname:
+      Type: String
+      Description: "CNAME for Dev Elastic Beanstalk environment"
+    EBProdCname:
+      Type: String
+      Description: "CNAME for Prod Elastic Beanstalk environment"
+    EBDevACMArn:
+      Type: String
+      Description: "ACM Arn for Dev Elastic Beanstalk environment"
+    EBProdACMArn:
+      Type: String
+      Description: "ACM Arn for Prod Elastic Beanstalk environment"
+    EBKeyPair:
+      Type: AWS::EC2::KeyPair::KeyName
+      Description: "Specify the right key pair required for SSH access"
+    EBInstanceType:
+      Type: String
+      Default: t3.small
+      AllowedValues: 
+       - t3.micro
+       - t3.small
+      Description: "Specify instance type"
+    BastionHostSecurityGroup:
+      Type: AWS::EC2::SecurityGroup::Id
+      Description: "Select Security Group of Bastion Host/Jump Host for SSH access"
+
+  
+Resources:
+  ECRStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: "<path on your S3 bucket>/ecr-dev-prod.yaml"
+      Parameters:
+        ProjectName: !Ref ProjectName
+        ECRDevName: !Ref ECRDevName
+        ECRProdName: !Ref ECRProdName
+
+  IAMStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: "<path on your S3 bucket>/elasticbeanstalk-iam.yaml"
+      Parameters:
+        ProjectName: !Ref ProjectName
+        ECRDeployPolicy: !Ref ECRDeployPolicy
+        ECRDevNameArn: !GetAtt ECRStack.Outputs.ECRDevNameArn
+        ECRProdNameArn: !GetAtt ECRStack.Outputs.ECRProdNameArn
+        DeployUser: !Ref DeployUser
+  EBApplicationStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: "<path on your S3 bucket>/elasticbeanstalk-application-dev-prod.yaml"
+      Parameters:
+        ProjectName: !Ref ProjectName
+        ECRDevName: !Ref ECRDevName
+        ECRProdName: !Ref ECRProdName
+        S3BucketName: !Ref S3BucketName
+        EBDevAppS3KeyName: !Ref EBDevAppS3KeyName
+        EBProdAppS3KeyName: !Ref ECRProdName
+        VPC: !Ref VPC
+        VPCPrivateSub1: !Ref VPCPrivateSub1
+        VPCPrivateSub2: !Ref VPCPrivateSub2
+        VPCPublicSub1: !Ref VPCPublicSub1
+        VPCPublicSub2: !Ref VPCPublicSub2
+        EBDevCname: !Ref EBDevCname
+        EBProdCname: !Ref EBProdCname
+        EBDevACMArn: !Ref EBDevACMArn
+        EBProdACMArn: !Ref EBProdACMArn
+        EBKeyPair: !Ref EBKeyPair
+        EBInstanceType: !Ref EBInstanceType
+        InstanceProfile: !GetAtt IAMStack.Outputs.InstanceProfile
+        BastionHostSecurityGroup: !Ref BastionHostSecurityGroup
+
+
+        
+
+           

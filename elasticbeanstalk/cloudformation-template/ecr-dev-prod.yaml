@@ -1,0 +1,41 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Parameters:
+    ProjectName:
+      Type: String
+      Description: "The project name"
+    ECRDevName:
+      Type: String
+      Description: "Specify the Dev ECR Name"
+    ECRProdName:
+      Type: String
+      Description: "Specify the Prod ECR Name"
+Resources:
+    ECRDevRepo:
+      Type: AWS::ECR::Repository
+      Properties: 
+        RepositoryName: !Join [ '-', [!Ref ProjectName, !Ref ECRDevName] ]
+        LifecyclePolicy:
+          LifecyclePolicyText: '{"rules":[{"rulePriority":1,"description":"Delete more than 5 images","selection":{"tagStatus":"untagged","countType":"imageCountMoreThan","countNumber":5},"action":{"type":"expire"}}]}'
+        Tags: 
+          -
+            Key: "Name"
+            Value: !Join [ '-', [!Ref ProjectName, !Ref ECRDevName] ]
+          
+    ECRProdRepo:
+      Type: AWS::ECR::Repository
+      Properties: 
+        RepositoryName: !Join [ '-', [!Ref ProjectName, !Ref ECRProdName] ]
+        LifecyclePolicy:
+          LifecyclePolicyText: '{"rules":[{"rulePriority":1,"description":"Delete more than 5 images","selection":{"tagStatus":"untagged","countType":"imageCountMoreThan","countNumber":5},"action":{"type":"expire"}}]}'
+        Tags: 
+          -
+            Key: "Name"
+            Value: !Join [ '-', [!Ref ProjectName, !Ref ECRProdName] ]
+            
+Outputs:
+  ECRDevNameArn:
+    Description: "ARN Dev Repository"
+    Value: !GetAtt ECRDevRepo.Arn
+  ECRProdNameArn:
+    Description: "ARN Prod Repository"
+    Value: !GetAtt ECRProdRepo.Arn
