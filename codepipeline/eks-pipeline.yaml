@@ -1,0 +1,230 @@
+Description: This template deploys a CI/CD pipeline to deploy to alredy created ElasticBeanstalk Application environment being triggered from S3 or ECR
+
+Parameters:
+
+  Name:
+    Type: String
+    Description: "Specify the name of the pipeline"
+
+  DeploymentName:
+    Type: String
+    Description: "Specify the name of the pipeline"
+  
+  ElasticBeanStalkApplicationName:
+    Type: String
+    Description: "Specify the name of the already created ElasticBeanstalk Application"
+
+  ElasticBeanStalkApplicationEnvironmentName:
+    Type: String
+    Description: "Specify the name of the already created ElasticBeanstalk Application environment name"
+  
+  EBAppS3KeyName:
+    Type: String
+    Description: "Key name for environment for e.g prod if you have uploaded prod.zip"
+
+  ECRRepoName:
+    Type: String
+    Description: "Specify the name of the ECR repository where the docker images are pushed"
+
+  ArtifactBucket:
+    Type: String
+    Description: "Specifiy the bucket name that you have already created for ElasticBeanstalk Application"
+  
+Resources:   
+    
+  EventECRTriggerRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Description: InvokePipeline
+      EventPattern:
+        source: 
+          - "aws.ecr"
+        detail-type: 
+          - "ECR Image Action"  
+        detail:
+          action-type: 
+            - "PUSH"
+          image-tag: 
+            - "latest"
+          repository-name: 
+            - !Ref ECRRepoName
+          result: 
+            - "SUCCESS"
+
+      Targets:
+        - Arn: !Sub 'arn:aws:codepipeline:${AWS::Region}:${AWS::AccountId}:${Pipeline}'
+          Id: Id346
+          RoleArn: !GetAtt CodePipelineEventsRole.Arn
+  
+  Eventss3TriggerRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Description: "S3.PutObject for CodePipeline source file"
+      State: ENABLED
+      EventPattern:
+        source:
+          - "aws.s3"
+        detail:
+          eventSource:
+            - "s3.amazonaws.com"
+          eventName:
+            - "PutObject"
+          requestParameters:
+            bucketName:
+              - !Ref ArtifactBucket
+
+      Targets:
+        - Arn: !Sub 'arn:aws:codepipeline:${AWS::Region}:${AWS::AccountId}:${Pipeline}'
+          Id: Id346
+          RoleArn: !GetAtt CodePipelineEventsRole.Arn        
+
+  PermissionForEventsToInvokePipeline:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: EventsRolePolicy
+      Roles:
+        - !Ref CodePipelineEventsRole
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Resource: "*"
+            Effect: Allow
+            Action:
+              - codepipeline:*
+
+  CodePipelineEventsRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - events.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Path: /
+
+
+  CodePipelineServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          -
+            Effect: Allow
+            Principal:
+              Service:
+                - codepipeline.amazonaws.com
+            Action: sts:AssumeRole
+      Path: /
+      Policies:
+        -
+          PolicyName: AWS-CodePipeline-Service-ebs-sample-codebuild			
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              -
+                Effect: Allow
+                Action:
+                  - codebuild:BatchGetBuilds
+                  - codebuild:StartBuild
+                Resource: '*'
+              -
+                Effect: Allow
+                Action:
+                  - devicefarm:ListProjects
+                  - devicefarm:ListDevicePools
+                  - devicefarm:GetRun
+                  - devicefarm:GetUpload
+                  - devicefarm:CreateUpload
+                  - devicefarm:ScheduleRun
+                Resource: '*'
+              -
+                Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                  - lambda:ListFunctions
+                Resource: '*'
+              -
+                Effect: Allow
+                Action:
+                  - iam:PassRole
+                Resource: '*'
+              -
+                Effect: Allow
+                Action:
+                  - elasticbeanstalk:*
+                  - ec2:*
+                  - elasticloadbalancing:*
+                  - autoscaling:*
+                  - cloudwatch:*
+                  - s3:*
+                  - sns:*
+                  - cloudformation:*
+                  - rds:*
+                  - sqs:*
+                  - ecs:*
+                  - ecr:*
+                  - logs:*
+                Resource: '*'
+
+  Pipeline:
+    Type: AWS::CodePipeline::Pipeline
+    Properties:
+      RoleArn: !GetAtt CodePipelineServiceRole.Arn
+      ArtifactStore:
+        Type: S3
+        Location: !Ref ArtifactBucket
+      Stages:
+        - Name: Source
+          Actions:
+            - InputArtifacts: []
+              ActionTypeId:
+                Category: Source
+                Owner: AWS
+                Version: 1
+                Provider: S3 
+              Configuration: 
+                S3Bucket: 
+                  Ref: ArtifactBucket 
+                S3ObjectKey: !Join [ '.', [!Ref EBAppS3KeyName, 'zip'] ]
+              RunOrder: 1 
+              OutputArtifacts:
+                - Name: SourceArtifact
+              RunOrder: 1
+              Name: BucketSource
+
+            - InputArtifacts: []
+              ActionTypeId:
+                Category: Source
+                Owner: AWS
+                Version: 1
+                Provider: ECR 
+              Configuration:
+                RepositoryName: !Ref ECRRepoName
+              OutputArtifacts:
+                - Name: ImageSource
+              RunOrder: 1
+              Name: ImageSource   
+        
+        - Name: Deploy
+          Actions:
+            - InputArtifacts: 
+              - Name: SourceArtifact
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Version: 1
+                Provider: ElasticBeanstalk
+              Configuration: 
+                ApplicationName: !Ref ElasticBeanStalkApplicationName
+                EnvironmentName: !Ref ElasticBeanStalkApplicationEnvironmentName
+              RunOrder: 1
+              Name: Deploy
+
+Outputs:
+  PipelineUrl:
+    Value: !Sub https://console.aws.amazon.com/codepipeline/home?region=${AWS::Region}#/view/${Pipeline}
